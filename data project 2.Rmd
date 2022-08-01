@@ -1,0 +1,334 @@
+---
+title: "Project #2"
+output:
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE)
+```
+
+# Homophobia in Germany
+
+Made by Liskonozhenko, Poroshina, Scherbakova, Vasyukova BSC-193C
+
+## Data and RQ
+
+For this project, we use the data from 9th round of ESS in Germany.
+
+**Research question**: what social factors influence homophobia in Germany?
+
+## Literature review
+
+In our second group project, we would like to explore the factors that can influence whether a person is homophobic or not.
+There are several studies that explore various factors that can predict homophobia.
+For example, in the study by Basow & Johnson (2000) were examined predictors of homophobia among female college students. The authors investigated how self-esteem, self-discrepancy, gender-attribute importance, gender role attitudes, authoritarian attitudes, and extent of contact with LGBT persons affect homophobia. The study was conducted among students of a private college of liberal arts; there were 71 respondents in total. Students completed several questionnaires related to the topic of predictors that were investigated in the study.  The researchers then performed a correlational analysis. The results of the analysis showed that the highest correlations with homophobia were in right-wing authoritarian views, belief in the egalitarianism of gender roles, the extent of contact with LGBT persons, and the importance of feminine attributes to participant's femininity. However, the only significant predictor was adherence to right-wing authoritarian attitudes.
+
+Another study (Nagoshi, 2008) is also dedicated to finding the predictors of homophobia and transphobia among college students (157 men and 153 women). This time both male and female students were asked to complete the questionnaire about their attitude towards LGBT community and trans people. Students also completed questionnaires which then helped to assess their political preferences, religion, propensity to aggression. The correlation analysis revealed that there is a positive relation between homophobia and radical right authorism, sexism and religious fundamentalism.
+
+There is also a relationship between LGBT acceptance and education levels.
+An article by Ohlander, Batalova & Treas (2005) found that people with at least a high school education and higher were more likely to be tolerant of LGBT people. Whereas people with no high school education were more likely to show strong intolerance towards the LGBT community. The study was conducted on the basis of data from the annual GSS survey (1988-1994), and the sample consisted of 2733 observations.
+
+Another article by Ying, Xie, Minggang, Peng (2017) examines the effects of religion an exposure to internet information on attitudes towards homosexuality in China. The author used data from the Chinese General Social Surveys 2013. The sample included 380 observations from the CGSS2013. The survey checked the attitude towards LGBT through the question “What do you generally think about same-sex sexual behaviors?”. Responses to the question were coded on a 1-5 scale where 1-always wrong and 5-always right. The internet usage was checked by the question whether the respondent uses the internet as the main source of information. Block about religion contained questions about confession the respondent belonged to.
+The analysis revealed that people who use internet as main sourse oh information are less likely to give answer “always wrong” to the question about normality of homosexual relationships compared to respondents who prefer other sourses of information.
+Also, only Muslim grout showed significant effect on attitude towards homosexuality. Muslim people are more likely to give answer “always wrong” to the question about normality of homosexual relationships.
+
+So, after reviewing several studies of various factors influencing people's attitudes towards LGBT rights, we would like to find out if there is any correlation between these factors and attitudes towards LGBT rights in Germany. We investigate whether gender, education, religiosity, and political preferences affect people's attitudes towards LGBT rights.
+
+**Loading packages and data**
+
+```{r}
+library(base)
+library(car)
+library(foreign)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(stargazer)
+```
+
+```{r}
+data = read.spss("./data/ESS9e03_1.sav",
+                    to.data.frame=TRUE)
+var.labels <- attr(data, "variable.labels")
+dd <- data.frame(names(var.labels), var.labels)
+
+ess1 <- filter(data, cntry == "Germany")
+```
+
+## Used variables
+
+Dependent variable: freehms -> freegays (Gays and lesbians free to live life as they wish)
+
+Independent variables: lrscale -> left_right (left or right political views), rlgdgr -> religiosity (How religious are you)
+
+Control variables: gndr -> gender (Gender), eisced -> education (Highest level of education), age (Age)
+
+## Data manipulation
+
+To predict the homophobia level with logit model, we need to make it binary. So, we excluded the unsure level, omitting only 140 observations. Agree are 0, disagree are 1 in the new encoding, so that 1 is for homophobic attitudes, and 0 for non-homophobic.
+
+```{r}
+essger <- filter(ess1, freehms != "Neither agree nor disagree")
+
+essger$freegays <- ifelse(essger$freehms == "Agree strongly" | essger$freehms == "Agree", 0, 1)
+```
+
+```{r}
+ess <- dplyr :: select(essger, freegays, gndr, lrscale, rlgdgr, eisced, agea)
+```
+
+There are too many levels in existing education variable. We recoded them to get only 3 levels - primary, secondary and higher education (+ other and no education, which were not present in Germany).
+
+```{r}
+levels(ess$eisced)
+```
+
+```{r}
+ess$edu1[ess$eisced == "ES-ISCED I , less than lower secondary" | ess$eisced == "ES-ISCED II, lower secondary"] <- "primary"
+
+ess$edu1[ess$eisced == "ES-ISCED IIIb, lower tier upper secondary" | ess$eisced == "ES-ISCED IIIa, upper tier upper secondary" | ess$eisced == "ES-ISCED IV, advanced vocational, sub-degree"] <- "secondary"
+
+ess$edu1[ess$eisced == "ES-ISCED V1, lower tertiary education, BA level" | ess$eisced == "ES-ISCED V2, higher tertiary education, >= MA level"] <- "higher"
+
+ess$edu1[ess$eisced == "Other"] <- "other"
+
+ess$edu1[ess$eisced == "Not possible to harmonise into ES-ISCED"] <- "no"
+```
+
+Education also has to be factor variable. And, it was releveled to have primary education as a reference in the model.
+
+```{r}
+ess$edu2 <- as.factor(ess$edu1)
+levels(ess$edu2)
+ess$edu <- relevel(ess$edu2, ref = "primary")
+levels(ess$edu)
+ess$age <- as.numeric(as.character(ess$agea))
+```
+
+Age variable was made into numeric one.
+
+```{r}
+ess <- rename(ess, religiosity = rlgdgr)
+ess <- rename(ess, left_right = lrscale)
+ess <- rename(ess, gender = gndr)
+ess <- rename(ess, education = edu)
+```
+
+The religiosity, political views, gender and education variables were renamed to the more readable names. 
+
+## Descriptive statistics
+
+### Gender
+
+```{r}
+ggplot(data = ess, aes(x = gender)) +
+  geom_bar(stat = "count")
+```
+
+The proportions of males and females in the sample are approximately the same, but there are slightly more males.
+
+### Age
+
+```{r}
+hist(ess$age)
+```
+
+```{r}
+shapiro.test(ess$age)
+```
+
+As we can see from histogram and the test, the data is not distributed normally for age variable. There are more older people than younger.
+
+### Religion
+
+```{r}
+ggplot(data = ess, aes(x = religiosity)) +
+  geom_bar(stat = "count")
+```
+
+The religious variable is also not distributed normally. There is a huge share of people who are not religious at all, smaller share is for middle and the smallest share is for very religious people.
+
+### Education
+
+```{r}
+ggplot(data = ess, aes(x = education)) +
+  geom_bar(stat = "count")
+```
+
+The biggest proportion of people has secondary education, much less - higher and primary.
+
+### Left-right scale
+
+```{r}
+ggplot(data = ess, aes(x = left_right)) +
+  geom_bar(stat = "count")
+```
+
+Most people have moderate political views. We can see that the distribution is slightly more left-skewed, more people tend to have left views.
+
+### Dependent variable - should gays be free
+
+```{r}
+ggplot(data = ess, aes(x = freegays)) +
+  geom_histogram(binwidth = 1)
+```
+
+```{r}
+shapiro.test(ess$freegays)
+```
+
+Distribution is not normal for homophobia. Vast majority of people think that gays and lesbians can live a normal life, and few are of opposite, homophobic, views.
+
+## Relationships between dependent and independent variables
+
+### Gender and homophobia
+
+```{r}
+leveneTest(ess$freegays ~ ess$gender)
+```
+
+```{r}
+oneway.test(ess$freegays ~ ess$gender, var.equal = T) 
+```
+
+As ANOVA test shows, the relationship is not very significant for gender, but we will use gender as our control variable in the model still, and will check if regression method will show significant results.
+
+### Age and homophobia
+
+```{r}
+t.test(ess$age, ess$freegays)
+```
+
+T-test results say that relationship is significant, according to p-value.
+
+### Religion and homophobia
+
+```{r}
+par(mfrow = c(1, 1), mar = c(12, 4, 4, 1))
+boxplot(ess$freegays ~ ess$religiosity, las = 2)
+```
+
+```{r}
+t.test(ess$freegays, as.numeric(ess$religiosity))
+```
+
+Judging by boxplot and test, the most religious people tend to be more negative about gay people living as they wish. The relationship is significant.
+
+### Education and homophobia
+
+```{r}
+leveneTest(ess$freegays ~ ess$education)
+```
+
+```{r}
+oneway.test(ess$freegays ~ ess$education, var.equal = T) 
+```
+
+This relationship also seem significant. The level of education may predict the level of homophobia and we should use it in the model.
+
+### Left-right scale and homophobia
+
+```{r}
+leveneTest(ess$freegays ~ ess$left_right)
+```
+
+```{r}
+oneway.test(ess$freegays ~ ess$left_right, var.equal = T) 
+```
+
+The position on left - right scale is also significant in relationship with the dependent variable. It should also be included in our model.
+
+## Model
+
+```{r, results = 'asis'}
+essfin <- na.omit(ess)
+model <- glm(freegays ~  gender + age + religiosity + education + left_right, data = essfin, family = binomial(link = "logit"))
+
+stargazer(model, title="Logit Regression Results",
+align=TRUE, dep.var.labels=c("Homophobic attitudes"),
+covariate.labels=c("Gender","Age", "Religiosity lvl 1", "Religiosity lvl 2", "Religiosity lvl 3", "Religiosity lvl 4", "Religiosity lvl 5", "Religiosity lvl 6", "Religiosity lvl 7", "Religiosity lvl 8", "Religiosity lvl 9", "Religiosity - Very religious", "Education - Higher","Education - Secondary", "Left-right scale lvl 1", "Left-right scale lvl 2", "Left-right scale lvl 3", "Left-right scale lvl 4", "Left-right scale lvl 5", "Left-right scale lvl 6", "Left-right scale lvl 7", "Left-right scale lvl 8", "Left-right scale lvl 9", "Left-right scale - Right"), omit.stat=c("ser","f"), no.space=TRUE, type = 'html')
+```
+
+**Gender**: the log of odds ratio of being homophobic is smaller by 0.67 for females compared to males; women are less likely to be homophobic.
+
+**Age**: the log of odds ratio of being homophobic increases by 0.017 with every year of age; older people are more likely to be more homophobic.
+
+**Religiosity**: the log of odds ratio is bigger by 0.87 for slightly religious people (with level 3), by 0.85 for religious people (with level 8), and by 1.97 and 2.26 for very religious people (level 9 and Very religious correspondingly) compared to not at all religious ones; very religious people are more likely to be homophobic.
+
+**Education**: the log of odds ratio is smaller by 1.08 for people with the higher education, and by 1.15 for people with secondary education, compared to people with primary education; more educated people are less likely to be homophobic.
+
+**Left-right political views**: the log of odds ratio is bigger by 1.9 for people with exactly right political views compared to ones with strictly left views; people with right-wing political views are more likely to be homophobic.
+
+### Odds ratio
+
+```{r}
+library(sjPlot)
+tab_model(model)
+```
+
+**Gender**: the odds of being homophobic decrease by 49% for females compared to males.
+
+**Age**: the odds of being homophobic increase by 2% with every year of age.
+
+**Religiosity**: the odds of being homophobic increase by 140% for slightly religious people (with level 3), increase by 136% for religious people (with level 8), and increase by 622% and 860% for very religious people (level 9 and Very religious correspondingly) compared to not at all religious ones.
+
+**Education**: the odds of being homophobic decrease by 66% for people with the higher education, and by 68% for people with secondary education, compared to people with primary education.
+
+**Left-right political views**: the odds of being homophobic increase by 573% for people with exactly right political views compared to ones with strictly left views.
+
+```{r, results = 'asis'}
+library(margins)
+margins <- data.frame(summary(margins(model)))
+stargazer(margins, title="Margins of the model",
+align=TRUE, summary = F, dep.var.labels=c("Homophobic attitudes"), no.space=TRUE, type = 'html')
+```
+
+**Gender**: on average the probability of being homophobic is greater by 0.03 for females.
+
+**Age**: on average the probability of being homophobic increases by 0.0008 with every year of age.
+
+**Religiosity**: on average the probability of being homophobic is greater by 0.036 for slightly religious people (with level 3), by 0.035 for religious people (with level 8), and by 0.136 and 0.176 for very religious people (level 9 and Very religious correspondingly) compared to not at all religious ones.
+
+**Education**: on average the probability of being homophobic is smaller by 0.077 for people with the higher education, and by 0.8 for people with secondary education, compared to people with primary education.
+
+**Left-right political views**: on average the probability of being homophobic is bigger by 0.23 for people with exactly right political views compared to ones with strictly left views.
+
+### Model fit
+
+```{r}
+library(pscl)
+hitmiss(model)
+```
+
+The model correctly predicts 94% of the data. However, non-homophobic people are correctly predicted in 99.7% of cases, while homophobes are correctly predicted in only 2.48%, which means that out model fails to predict homophobic people. It is probably because there are very few homophobic people in the sample compared to non-homophobic.
+
+```{r}
+library(DescTools)
+PseudoR2(model)
+```
+
+Our model explains about 11% of the data, which is not a perfect fit.
+
+
+## Conclusion
+
+Our model is not perfect, but it showed significant results. Consistent with the literature, the model showed that people that are most religious, people with right-wing political views, and people with education lower than secondary are more likely to be homophobic. 
+
+
+## References
+
+1. Basow, S.A., Johnson, K. Predictors of Homophobia in Female College Students. Sex Roles 42, 391–404 (2000). https://doi.org/10.1023/A:1007098221316
+
+
+2. Nagoshi J. L. et al. Gender differences in correlates of homophobia and transphobia //Sex roles. – 2008. – Т. 59. – №. 7. – С. 521-531.
+
+
+3. Julianne Ohlander; Jeanne Batalova; Judith Treas (2005). Explaining educational influences on attitudes toward homosexual relations. , 34(4), 781–799. doi:10.1016/j.ssresearch.2004.12.004 
+4. Ying, Xie; Minggang, Peng  (2017). Attitudes towards Homosexuality in China: Exploring the Effects of Religion, Modernizing Factors, and Traditional Culture. Journal of Homosexuality. doi:10.1080/00918369.2017.1386025
+
+
